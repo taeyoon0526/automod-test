@@ -113,6 +113,7 @@ class Bounce(commands.Cog):
             "log_channel_id": None,
             "max_contacts": 25,
             "include_bots": False,
+            "welcome_enabled": True,
             "repeat_detection": {
                 "enabled": False,
                 "window_minutes": 5,
@@ -470,6 +471,8 @@ class Bounce(commands.Cog):
     async def on_member_join(self, member: discord.Member) -> None:
         if not member.guild:
             return
+        if not await self.config.guild(member.guild).welcome_enabled():
+            return
         try:
             window_seconds = await self.config.guild(member.guild).window_seconds()
             ban_seconds = await self.config.guild(member.guild).ban_duration_seconds()
@@ -758,6 +761,11 @@ class Bounce(commands.Cog):
     async def bounce_includebots(self, ctx: commands.Context, value: bool) -> None:
         await self.config.guild(ctx.guild).include_bots.set(value)
         await ctx.send(f"봇 포함 설정이 {'켜짐' if value else '꺼짐'}으로 변경되었습니다.")
+
+    @bounce.command(name="welcome")
+    async def bounce_welcome(self, ctx: commands.Context, value: bool) -> None:
+        await self.config.guild(ctx.guild).welcome_enabled.set(value)
+        await ctx.send(f"환영 DM이 {'켜짐' if value else '꺼짐'}으로 설정되었습니다.")
 
 
 async def setup(bot: Red) -> None:
