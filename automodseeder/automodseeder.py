@@ -167,7 +167,11 @@ class AutoModSeeder(commands.Cog):
         action_mode: str,
         channel_id: Optional[int],
     ) -> discord.AutoModRule:
-        if hasattr(guild, "create_automod_rule"):
+        if (
+            hasattr(guild, "create_automod_rule")
+            and hasattr(discord, "AutoModRuleTriggerMetadata")
+            and hasattr(discord, "AutoModRuleAction")
+        ):
             trigger_metadata = discord.AutoModRuleTriggerMetadata(keyword_filter=keywords)
             if action_mode == "alert" and channel_id:
                 action = discord.AutoModRuleAction(
