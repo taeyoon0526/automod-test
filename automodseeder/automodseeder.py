@@ -208,6 +208,19 @@ class AutoModSeeder(commands.Cog):
             return
         await self._rest_delete_rule(guild, rule.id)
 
+    async def _enable_rule(self, guild: discord.Guild, rule: discord.AutoModRule) -> discord.AutoModRule:
+        if hasattr(rule, "edit"):
+            return await rule.edit(enabled=True)
+        route = discord.http.Route(
+            "PATCH",
+            "/guilds/{guild_id}/auto-moderation/rules/{rule_id}",
+            guild_id=guild.id,
+            rule_id=rule.id,
+        )
+        payload = {"enabled": True}
+        data = await self.bot.http.request(route, json=payload)
+        return discord.AutoModRule(data=data, guild=guild, state=guild._state)
+
     async def _sync_seeded_ids(
         self, guild: discord.Guild
     ) -> Tuple[List[int], Dict[int, discord.AutoModRule]]:
@@ -461,6 +474,66 @@ class AutoModSeeder(commands.Cog):
         await self._maybe_log(
             ctx.guild,
             action="purge",
+            requested=success + failed,
+            success=success,
+            failed=failed,
+            note=note,
+        )
+
+    @automodseed.command(name="enableall")
+    async def automodseed_enableall(self, ctx: commands.Context) -> None:
+        """Enable all AutoMod rules created by this cog."""
+        if not await self._is_owner(ctx):
+            return
+        if not self._has_manage_guild(ctx.guild):
+            await ctx.send("봇에 서버 관리(Manage Guild) 권한이 필요합니다.")
+            return
+        stored_ids, rule_map = await self._sync_seeded_ids(ctx.guild)
+        if not stored_ids:
+            await ctx.send("활성화할 규칙이 없습니다.")
+            return
+
+        success = 0
+        failed = 0
+        note = ""
+
+        for idx, rule_id in enumerate(list(stored_ids)):
+            await asyncio.sleep(random.uniform(CREATE_SLEEP_MIN, CREATE_SLEEP_MAX))
+            if idx > 0 and idx % BATCH_SLEEP_EVERY == 0:
+                await asyncio.sleep(BATCH_SLEEP_SECONDS)
+
+            rule = rule_map.get(rule_id)
+            if not rule:
+                stored_ids.remove(rule_id)
+                continue
+            try:
+                await self._enable_rule(ctx.guild, rule)
+                success += 1
+            except discord.Forbidden:
+                failed += 1
+                note = "권한 부족"
+                break
+            except discord.HTTPException as exc:
+                status = getattr(exc, "status", None)
+                if status == 429:
+                    await self._sleep_with_backoff(1)
+                    try:
+                        await self._enable_rule(ctx.guild, rule)
+                        success += 1
+                        continue
+                    except discord.HTTPException:
+                        failed += 1
+                        note = "레이트리밋"
+                        break
+                failed += 1
+
+        summary = f"활성화 성공: {success}, 실패: {failed}"
+        if note:
+            summary += f" ({note})"
+        await ctx.send(summary)
+        await self._maybe_log(
+            ctx.guild,
+            action="enableall",
             requested=success + failed,
             success=success,
             failed=failed,
